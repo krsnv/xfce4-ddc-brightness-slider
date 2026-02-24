@@ -35,3 +35,35 @@ The installer will:
 4. Copy the script to `/usr/local/bin/`
 5. Set up autostart for your XFCE session
 6. Probe all I2C buses to find your monitor
+
+## Troubleshooting
+
+**"Permission denied" on `/dev/i2c-*`**
+
+```bash
+# Make sure the udev rule exists
+cat /etc/udev/rules.d/99-i2c.rules
+# Should contain: KERNEL=="i2c-[0-9]*", GROUP="i2c", MODE="0660"
+
+# Make sure you're in the i2c group
+groups | grep i2c
+
+# If not, add yourself and relog
+sudo usermod -aG i2c $USER
+```
+
+**ddccontrol can't find the monitor**
+
+```bash
+# Make sure i2c-dev is loaded
+sudo modprobe i2c-dev
+
+# Scan for monitors
+sudo ddccontrol -p
+
+# Try each bus manually
+for dev in /dev/i2c-*; do
+    echo "--- $dev ---"
+    ddccontrol -r 0x10 "dev:$dev" 2>/dev/null | grep -E '\+/|current'
+done
+```
