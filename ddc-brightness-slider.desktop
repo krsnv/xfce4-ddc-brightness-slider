@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=DDC Brightness Slider
+Comment=Control monitor brightness via DDC/CI
+Exec=/usr/local/bin/ddc-brightness-slider.py
+Icon=display-brightness-symbolic
+Categories=Settings;HardwareSettings;
+Keywords=brightness;monitor;ddc;display;
+StartupNotify=false
+Terminal=false
