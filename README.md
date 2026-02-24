@@ -67,3 +67,11 @@ for dev in /dev/i2c-*; do
     ddccontrol -r 0x10 "dev:$dev" 2>/dev/null | grep -E '\+/|current'
 done
 ```
+
+## Uninstall
+
+```bash
+sudo rm /usr/local/bin/ddc-brightness-slider.py
+rm ~/.config/autostart/ddc-brightness-slider.desktop
+rm ~/.local/share/applications/ddc-brightness-slider.desktop
+```
