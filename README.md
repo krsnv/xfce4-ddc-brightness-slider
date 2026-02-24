@@ -22,6 +22,8 @@ GTK3 system tray applet for XFCE4 that controls external monitor brightness via 
 
 ## Installation
 
+### Via script
+
 ```bash
 git clone https://github.com/krsnv/xfce4-ddc-brightness-slider.git
 cd ddc-brightness-slider
@@ -37,6 +39,22 @@ The installer will:
 4. Copy the script to `/usr/local/bin/`
 5. Set up autostart for your XFCE session
 6. Probe all I2C buses to find your monitor
+
+### Manual installation
+
+```bash
+sudo apt install ddccontrol python3-gi gir1.2-gtk-3.0
+sudo modprobe i2c-dev
+echo "i2c-dev" | sudo tee /etc/modules-load.d/i2c-dev.conf
+
+sudo groupadd -f i2c
+sudo usermod -aG i2c $USER
+echo 'KERNEL=="i2c-[0-9]*", GROUP="i2c", MODE="0660"' | sudo tee /etc/udev/rules.d/99-i2c.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+
+sudo cp ddc-brightness-slider.py /usr/local/bin/
+sudo chmod +x /usr/local/bin/ddc-brightness-slider.py
+```
 
 ## Troubleshooting
 
