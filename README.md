@@ -1,6 +1,8 @@
-# ddc-brightness-slider
+# xfce4-ddc-brightness-slider
 
 GTK3 system tray applet for XFCE4 that controls external monitor brightness via [DDC/CI](https://en.wikipedia.org/wiki/Display_Data_Channel) protocol.
+
+![xfce4-ddc-brightness-slider showcase](screenshot.png)
 
 ## Features
 
