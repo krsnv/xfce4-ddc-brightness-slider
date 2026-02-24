@@ -77,3 +77,17 @@ sudo rm /usr/local/bin/ddc-brightness-slider.py
 rm ~/.config/autostart/ddc-brightness-slider.desktop
 rm ~/.local/share/applications/ddc-brightness-slider.desktop
 ```
+
+## TODO
+
+- [ ] Add: multi monitor support
+- [ ] Add: configuration file for custom use-cases
+
+
+## Contributing
+
+Contributions are welcome. If you would like to improve the plugin, please fork the repository, create a separate branch for your changes, and submit a pull request with a clear description of what was modified and why.
+
+For bug reports, feature requests, or any other problems you notice, please open an Issue in this repository. Describe the problem in detail, including your system configuration, steps to reproduce (if applicable), and any relevant logs or screenshots.
+
+All detected problems should be reported as Issues so they can be tracked and addressed properly.
