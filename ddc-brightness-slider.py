@@ -6,11 +6,6 @@ DDC Brightness Slider for XFCE4
 GTK3 tray icon with a brightness slider that controls monitor brightness
 via ddccontrol (DDC/CI protocol over I2C).
 
-Usage:
-  1. Direct run:       ./ddc-brightness-slider.py
-  2. Autostart:        Add to XFCE Settings → Session and Startup → Application Autostart
-  3. Panel launcher:   Add as a Launcher item in XFCE4 panel
-
 Configuration:
   Edit the constants below or use command-line arguments.
 
@@ -36,12 +31,14 @@ import argparse
 import re
 import sys
 import signal
+import threading
 
 DEFAULT_I2C_DEV = "/dev/i2c-3"
 DEFAULT_DDC_REGISTER = "0x10"       # 0x10 = Brightness in DDC/CI spec
 DEFAULT_MIN_BRIGHTNESS = 0
 DEFAULT_MAX_BRIGHTNESS = 100
 DEFAULT_STEP = 5
+DEFAULT_SCROLL_STEP = 1
 ICON_NAME = "display-brightness-symbolic"
 
 
@@ -213,6 +210,12 @@ class BrightnessPopup(Gtk.Window):
         self.is_applying = False
         self.controller.set_brightness(value)
 
+    def update_value(self, value):
+        self.is_applying = True
+        self.scale.set_value(value)
+        self.value_label.set_text(f"{value}%")
+        self.is_applying = False
+
     def _set_visible(self, visible):
         self._visible = visible
 
@@ -250,7 +253,11 @@ class TrayApp:
 
     def __init__(self, controller: BrightnessController, min_val: int, max_val: int, step: int):
         self.controller = controller
+        self.min_val = min_val
+        self.max_val = max_val
         self.popup = BrightnessPopup(controller, min_val, max_val, step)
+        self._cached_brightness = None
+        self._scroll_debounce_id = None
 
         self.status_icon = None
         self.indicator = None
@@ -279,6 +286,7 @@ class TrayApp:
             self.status_icon.set_visible(True)
             self.status_icon.connect("activate", self._on_left_click)
             self.status_icon.connect("popup-menu", self._on_right_click)
+            self.status_icon.connect("scroll-event", self._on_scroll_event)
             print("[ddc-brightness] Using GtkStatusIcon tray icon", file=sys.stderr)
             return True
         except Exception:
@@ -345,6 +353,7 @@ class TrayApp:
         menu.show_all()
         self.indicator.set_menu(menu)
         self.indicator.set_secondary_activate_target(item_slider)
+        self.indicator.connect("scroll-event", self._on_indicator_scroll)
 
         print("[ddc-brightness] Using AppIndicator tray icon", file=sys.stderr)
 
@@ -354,6 +363,38 @@ class TrayApp:
         pointer = seat.get_pointer()
         _, x, y = pointer.get_position()
         self.popup.toggle_at(x, y)
+
+    def _on_scroll_event(self, icon, event):
+        if event.direction == Gdk.ScrollDirection.UP:
+            self._adjust_brightness(DEFAULT_SCROLL_STEP)
+        elif event.direction == Gdk.ScrollDirection.DOWN:
+            self._adjust_brightness(-DEFAULT_SCROLL_STEP)
+
+    def _on_indicator_scroll(self, indicator, delta, direction):
+        if direction == Gdk.ScrollDirection.UP:
+            self._adjust_brightness(DEFAULT_SCROLL_STEP)
+        elif direction == Gdk.ScrollDirection.DOWN:
+            self._adjust_brightness(-DEFAULT_SCROLL_STEP)
+
+    def _adjust_brightness(self, delta):
+        if self._cached_brightness is None:
+            self._cached_brightness = self.controller.get_brightness()
+            if self._cached_brightness is None:
+                return
+        new_val = max(self.min_val, min(self.max_val, self._cached_brightness + delta))
+        if new_val == self._cached_brightness:
+            return
+        self._cached_brightness = new_val
+        if self.popup._visible:
+            self.popup.update_value(new_val)
+        if self._scroll_debounce_id:
+            GLib.source_remove(self._scroll_debounce_id)
+        self._scroll_debounce_id = GLib.timeout_add(100, self._apply_scroll_brightness, new_val)
+
+    def _apply_scroll_brightness(self, value):
+        self._scroll_debounce_id = None
+        threading.Thread(target=self.controller.set_brightness, args=(value,), daemon=True).start()
+        return False
 
 
 class StandaloneWindow(Gtk.Window):
