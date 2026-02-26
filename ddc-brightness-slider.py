@@ -34,7 +34,8 @@ import signal
 import threading
 
 DEFAULT_I2C_DEV = "/dev/i2c-3"
-DEFAULT_DDC_REGISTER = "0x10"       # 0x10 = Brightness in DDC/CI spec
+DEFAULT_DDC_REGISTER = "0x10"           # 0x10 = Brightness in DDC/CI spec
+DEFAULT_DDC_CONTRAST_REGISTER = "0x12"  # 0x12 = Contrast in DDC/CI spec
 DEFAULT_MIN_BRIGHTNESS = 0
 DEFAULT_MAX_BRIGHTNESS = 100
 DEFAULT_STEP = 5
@@ -42,7 +43,7 @@ DEFAULT_SCROLL_STEP = 1
 ICON_NAME = "display-brightness-symbolic"
 
 
-class BrightnessController:
+class DDCController:
 
     def __init__(self, i2c_dev: str, register: str):
         self.device = f"dev:{i2c_dev}"
@@ -83,13 +84,17 @@ class BrightnessController:
 
 class BrightnessPopup(Gtk.Window):
 
-    def __init__(self, controller: BrightnessController, min_val: int, max_val: int, step: int):
+    def __init__(self, controller: DDCController, contrast_controller: DDCController,
+                 min_val: int, max_val: int, step: int):
         super().__init__(type=Gtk.WindowType.TOPLEVEL)
 
         self.controller = controller
+        self.contrast_controller = contrast_controller
         self.is_applying = False
+        self.is_applying_contrast = False
         self._debounce_id = None
-        self._visible = False 
+        self._contrast_debounce_id = None
+        self._visible = False
         self._position = (0, 0)
 
         self.set_decorated(False)
@@ -158,6 +163,41 @@ class BrightnessPopup(Gtk.Window):
             btn.connect("clicked", self._on_preset_clicked, preset)
             btn_box.pack_start(btn, True, True, 0)
 
+        vbox.pack_start(Gtk.Separator(), False, False, 0)
+
+        contrast_title = Gtk.Label()
+        contrast_title.set_markup("<b>◑ Contrast</b>")
+        vbox.pack_start(contrast_title, False, False, 0)
+
+        vbox.pack_start(Gtk.Separator(), False, False, 0)
+
+        contrast_hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        vbox.pack_start(contrast_hbox, True, True, 0)
+
+        contrast_adj = Gtk.Adjustment(
+            value=50,
+            lower=min_val,
+            upper=max_val,
+            step_increment=step,
+            page_increment=step * 2,
+            page_size=0
+        )
+        self.contrast_scale = Gtk.Scale(orientation=Gtk.Orientation.HORIZONTAL, adjustment=contrast_adj)
+        self.contrast_scale.set_digits(0)
+        self.contrast_scale.set_draw_value(False)
+        self.contrast_scale.set_size_request(200, -1)
+        self.contrast_scale.set_can_focus(True)
+
+        for tick in range(min_val, max_val + 1, 25):
+            self.contrast_scale.add_mark(tick, Gtk.PositionType.BOTTOM, None)
+
+        self.contrast_scale.connect("value-changed", self._on_contrast_changed)
+        contrast_hbox.pack_start(self.contrast_scale, True, True, 0)
+
+        self.contrast_label = Gtk.Label(label="50%")
+        self.contrast_label.set_width_chars(5)
+        contrast_hbox.pack_start(self.contrast_label, False, False, 0)
+
         css = Gtk.CssProvider()
         css.load_from_data(b"""
             window {
@@ -187,6 +227,12 @@ class BrightnessPopup(Gtk.Window):
             self.scale.set_value(current)
             self.value_label.set_text(f"{current}%")
             self.is_applying = False
+        contrast = self.contrast_controller.get_brightness()
+        if contrast is not None:
+            self.is_applying_contrast = True
+            self.contrast_scale.set_value(contrast)
+            self.contrast_label.set_text(f"{contrast}%")
+            self.is_applying_contrast = False
 
     def _on_value_changed(self, scale):
         if self.is_applying:
@@ -201,6 +247,21 @@ class BrightnessPopup(Gtk.Window):
     def _apply_brightness(self, value):
         self._debounce_id = None
         self.controller.set_brightness(value)
+        return False
+
+    def _on_contrast_changed(self, scale):
+        if self.is_applying_contrast:
+            return
+        value = int(scale.get_value())
+        self.contrast_label.set_text(f"{value}%")
+
+        if self._contrast_debounce_id:
+            GLib.source_remove(self._contrast_debounce_id)
+        self._contrast_debounce_id = GLib.timeout_add(150, self._apply_contrast, value)
+
+    def _apply_contrast(self, value):
+        self._contrast_debounce_id = None
+        self.contrast_controller.set_brightness(value)
         return False
 
     def _on_preset_clicked(self, button, value):
@@ -251,11 +312,12 @@ class BrightnessPopup(Gtk.Window):
 
 class TrayApp:
 
-    def __init__(self, controller: BrightnessController, min_val: int, max_val: int, step: int):
+    def __init__(self, controller: DDCController, contrast_controller: DDCController,
+                 min_val: int, max_val: int, step: int):
         self.controller = controller
         self.min_val = min_val
         self.max_val = max_val
-        self.popup = BrightnessPopup(controller, min_val, max_val, step)
+        self.popup = BrightnessPopup(controller, contrast_controller, min_val, max_val, step)
         self._cached_brightness = None
         self._scroll_debounce_id = None
 
@@ -298,7 +360,7 @@ class TrayApp:
             display = Gdk.Display.get_default()
             monitor = display.get_monitor_at_point(area.x, area.y)
             popup_width = 280
-            popup_height = 120
+            popup_height = 210
 
             x = area.x + area.width // 2 - popup_width // 2
 
@@ -399,13 +461,17 @@ class TrayApp:
 
 class StandaloneWindow(Gtk.Window):
 
-    def __init__(self, controller: BrightnessController, min_val: int, max_val: int, step: int):
-        super().__init__(title="DDC Brightness")
+    def __init__(self, controller: DDCController, contrast_controller: DDCController,
+                 min_val: int, max_val: int, step: int):
+        super().__init__(title="DDC Brightness & Contrast")
         self.controller = controller
+        self.contrast_controller = contrast_controller
         self.is_applying = False
+        self.is_applying_contrast = False
         self._debounce_id = None
+        self._contrast_debounce_id = None
 
-        self.set_default_size(350, 80)
+        self.set_default_size(350, 160)
         self.set_resizable(False)
         self.set_keep_above(True)
         self.set_type_hint(Gdk.WindowTypeHint.UTILITY)
@@ -415,6 +481,7 @@ class StandaloneWindow(Gtk.Window):
         vbox.set_border_width(12)
         self.add(vbox)
 
+        # Brightness row
         hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         vbox.pack_start(hbox, False, False, 0)
 
@@ -444,6 +511,29 @@ class StandaloneWindow(Gtk.Window):
             btn.connect("clicked", self._on_preset_clicked, preset)
             btn_box.pack_start(btn, True, True, 0)
 
+        vbox.pack_start(Gtk.Separator(), False, False, 0)
+
+        # Contrast row
+        contrast_hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        vbox.pack_start(contrast_hbox, False, False, 0)
+
+        contrast_icon = Gtk.Image.new_from_icon_name("contrast-symbolic", Gtk.IconSize.LARGE_TOOLBAR)
+        contrast_hbox.pack_start(contrast_icon, False, False, 0)
+
+        contrast_adj = Gtk.Adjustment(value=50, lower=min_val, upper=max_val,
+                                      step_increment=step, page_increment=step * 2, page_size=0)
+        self.contrast_scale = Gtk.Scale(orientation=Gtk.Orientation.HORIZONTAL, adjustment=contrast_adj)
+        self.contrast_scale.set_digits(0)
+        self.contrast_scale.set_draw_value(False)
+        for tick in range(min_val, max_val + 1, 25):
+            self.contrast_scale.add_mark(tick, Gtk.PositionType.BOTTOM, None)
+        self.contrast_scale.connect("value-changed", self._on_contrast_changed)
+        contrast_hbox.pack_start(self.contrast_scale, True, True, 0)
+
+        self.contrast_label = Gtk.Label(label="50%")
+        self.contrast_label.set_width_chars(5)
+        contrast_hbox.pack_start(self.contrast_label, False, False, 0)
+
         self._refresh()
 
     def _refresh(self):
@@ -453,6 +543,12 @@ class StandaloneWindow(Gtk.Window):
             self.scale.set_value(current)
             self.value_label.set_text(f"{current}%")
             self.is_applying = False
+        contrast = self.contrast_controller.get_brightness()
+        if contrast is not None:
+            self.is_applying_contrast = True
+            self.contrast_scale.set_value(contrast)
+            self.contrast_label.set_text(f"{contrast}%")
+            self.is_applying_contrast = False
 
     def _on_value_changed(self, scale):
         if self.is_applying:
@@ -468,6 +564,20 @@ class StandaloneWindow(Gtk.Window):
         self.controller.set_brightness(value)
         return False
 
+    def _on_contrast_changed(self, scale):
+        if self.is_applying_contrast:
+            return
+        value = int(scale.get_value())
+        self.contrast_label.set_text(f"{value}%")
+        if self._contrast_debounce_id:
+            GLib.source_remove(self._contrast_debounce_id)
+        self._contrast_debounce_id = GLib.timeout_add(150, self._apply_contrast, value)
+
+    def _apply_contrast(self, value):
+        self._contrast_debounce_id = None
+        self.contrast_controller.set_brightness(value)
+        return False
+
     def _on_preset_clicked(self, button, value):
         self.is_applying = True
         self.scale.set_value(value)
@@ -478,19 +588,23 @@ class StandaloneWindow(Gtk.Window):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="DDC Brightness Slider for XFCE4",
+        description="DDC Brightness & Contrast Slider for XFCE4",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 Examples:
   %(prog)s                          # Tray icon mode (default)
   %(prog)s --standalone             # Floating window mode
   %(prog)s --device /dev/i2c-5      # Use a different I2C bus
+  %(prog)s --get-contrast           # Print current contrast
+  %(prog)s --set-contrast 50        # Set contrast to 50
 """
     )
     parser.add_argument("-d", "--device", default=DEFAULT_I2C_DEV,
                         help=f"I2C device path (default: {DEFAULT_I2C_DEV})")
     parser.add_argument("-r", "--register", default=DEFAULT_DDC_REGISTER,
                         help=f"DDC register for brightness (default: {DEFAULT_DDC_REGISTER})")
+    parser.add_argument("--contrast-register", default=DEFAULT_DDC_CONTRAST_REGISTER,
+                        help=f"DDC register for contrast (default: {DEFAULT_DDC_CONTRAST_REGISTER})")
     parser.add_argument("--min", type=int, default=DEFAULT_MIN_BRIGHTNESS,
                         help="Minimum brightness value (default: 0)")
     parser.add_argument("--max", type=int, default=DEFAULT_MAX_BRIGHTNESS,
@@ -503,10 +617,15 @@ Examples:
                         help="Set brightness to VALUE and exit (no GUI)")
     parser.add_argument("--get", action="store_true",
                         help="Print current brightness and exit (no GUI)")
+    parser.add_argument("--set-contrast", type=int, metavar="VALUE",
+                        help="Set contrast to VALUE and exit (no GUI)")
+    parser.add_argument("--get-contrast", action="store_true",
+                        help="Print current contrast and exit (no GUI)")
 
     args = parser.parse_args()
 
-    controller = BrightnessController(args.device, args.register)
+    controller = DDCController(args.device, args.register)
+    contrast_controller = DDCController(args.device, args.contrast_register)
 
     if args.get:
         val = controller.get_brightness()
@@ -517,17 +636,30 @@ Examples:
             print("Error: could not read brightness", file=sys.stderr)
             sys.exit(1)
 
+    if args.get_contrast:
+        val = contrast_controller.get_brightness()
+        if val is not None:
+            print(val)
+            sys.exit(0)
+        else:
+            print("Error: could not read contrast", file=sys.stderr)
+            sys.exit(1)
+
     if args.set is not None:
         ok = controller.set_brightness(args.set)
+        sys.exit(0 if ok else 1)
+
+    if args.set_contrast is not None:
+        ok = contrast_controller.set_brightness(args.set_contrast)
         sys.exit(0 if ok else 1)
 
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     if args.standalone:
-        win = StandaloneWindow(controller, args.min, args.max, args.step)
+        win = StandaloneWindow(controller, contrast_controller, args.min, args.max, args.step)
         win.show_all()
     else:
-        app = TrayApp(controller, args.min, args.max, args.step)
+        app = TrayApp(controller, contrast_controller, args.min, args.max, args.step)
 
     Gtk.main()
 
