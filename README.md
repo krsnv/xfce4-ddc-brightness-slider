@@ -119,8 +119,8 @@ rm ~/.local/share/applications/ddc-brightness-slider.desktop
 ## TODO
 
 - [ ] Add: multi monitor support
-- [ ] Add: configuration file for custom use-cases
-
+- [ ] Add: redshift support
+- [ ] Add: presets for temp and brightness/contrast
 
 ## Contributing
 
