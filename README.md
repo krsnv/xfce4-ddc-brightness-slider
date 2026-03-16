@@ -26,7 +26,7 @@ GTK3 system tray applet for XFCE4 that controls external monitor brightness via 
 
 ```bash
 git clone https://github.com/krsnv/xfce4-ddc-brightness-slider.git
-cd ddc-brightness-slider
+cd xfce4-ddc-brightness-slider
 chmod +x install.sh
 ./install.sh
 ```
@@ -42,6 +42,8 @@ The installer will:
 
 ### Manual installation
 
+#### Ubuntu/Debian
+
 ```bash
 sudo apt install ddccontrol python3-gi gir1.2-gtk-3.0
 sudo modprobe i2c-dev
@@ -53,6 +55,24 @@ echo 'KERNEL=="i2c-[0-9]*", GROUP="i2c", MODE="0660"' | sudo tee /etc/udev/rules
 sudo udevadm control --reload-rules && sudo udevadm trigger
 
 sudo cp ddc-brightness-slider.py /usr/local/bin/
+sudo chmod +x /usr/local/bin/ddc-brightness-slider.py
+```
+
+#### Arch Linux
+
+```
+sudo pacman -S ddccontrol python-gobject gtk3
+
+sudo modprobe i2c-dev
+echo "i2c-dev" | sudo tee /etc/modules-load.d/i2c-dev.conf
+
+sudo groupadd -f i2c
+sudo usermod -aG i2c $USER
+echo 'KERNEL=="i2c-[0-9]*", GROUP="i2c", MODE="0660"' | sudo tee /etc/udev/rules.d/99-i2c.rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+
+sudo cp ddc-brightness-slider.py /usr/local/bin/ddc-brightness-slider.py
 sudo chmod +x /usr/local/bin/ddc-brightness-slider.py
 ```
 
@@ -99,8 +119,8 @@ rm ~/.local/share/applications/ddc-brightness-slider.desktop
 ## TODO
 
 - [ ] Add: multi monitor support
-- [ ] Add: configuration file for custom use-cases
-
+- [ ] Add: redshift support
+- [ ] Add: presets for temp and brightness/contrast
 
 ## Contributing
 
