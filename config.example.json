@@ -1,0 +1,9 @@
+{
+  "scroll_step": 1,
+  "presets": [
+    {"name": "Movie", "brightness": 50, "contrast": 50, "color_temp": 3500},
+    {"name": "Reading", "brightness": 80, "contrast": 40, "color_temp": 5500},
+    {"name": "Night", "brightness": 10, "contrast": 20, "color_temp": 3000},
+    {"name": "Day", "brightness": 70, "contrast": 50, "color_temp": 6500}
+  ]
+}

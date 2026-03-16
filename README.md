@@ -116,12 +116,6 @@ rm ~/.config/autostart/ddc-brightness-slider.desktop
 rm ~/.local/share/applications/ddc-brightness-slider.desktop
 ```
 
-## TODO
-
-- [ ] Add: multi monitor support
-- [ ] Add: redshift support
-- [ ] Add: presets for temp and brightness/contrast
-
 ## Contributing
 
 Contributions are welcome. If you would like to improve the plugin, please fork the repository, create a separate branch for your changes, and submit a pull request with a clear description of what was modified and why.

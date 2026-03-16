@@ -7,27 +7,126 @@ INSTALL_PATH="/usr/local/bin/ddc-brightness-slider.py"
 DESKTOP_PATH="$HOME/.config/autostart/ddc-brightness-slider.desktop"
 APPS_PATH="$HOME/.local/share/applications/ddc-brightness-slider.desktop"
 
-echo "== XFCE4 DDC Brightness Slider Installer =="
+# Detect distro
+detect_distro() {
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        case "$ID" in
+            arch|manjaro|endeavouros|garuda|artix|cachyos)
+                echo "arch"
+                ;;
+            debian|ubuntu|linuxmint|pop|elementary|zorin)
+                echo "debian"
+                ;;
+            *)
+                if [ -n "$ID_LIKE" ]; then
+                    case "$ID_LIKE" in
+                        *arch*) echo "arch" ;;
+                        *debian*|*ubuntu*) echo "debian" ;;
+                        *) echo "unknown" ;;
+                    esac
+                else
+                    echo "unknown"
+                fi
+                ;;
+        esac
+    elif command -v pacman &>/dev/null; then
+        echo "arch"
+    elif command -v apt-get &>/dev/null; then
+        echo "debian"
+    else
+        echo "unknown"
+    fi
+}
+
+DISTRO=$(detect_distro)
+
+echo "== DDC Brightness Slider Installer =="
+echo "  Detected distro family: $DISTRO"
 echo
 
+install_packages_arch() {
+    local pkgs=("$@")
+    # Split into repo and AUR packages
+    local repo_pkgs=()
+    local aur_pkgs=()
+    for pkg in "${pkgs[@]}"; do
+        if pacman -Si "$pkg" &>/dev/null; then
+            repo_pkgs+=("$pkg")
+        else
+            aur_pkgs+=("$pkg")
+        fi
+    done
+    if [ ${#repo_pkgs[@]} -gt 0 ]; then
+        sudo pacman -S --needed --noconfirm "${repo_pkgs[@]}"
+    fi
+    if [ ${#aur_pkgs[@]} -gt 0 ]; then
+        if command -v yay &>/dev/null; then
+            yay -S --needed --noconfirm "${aur_pkgs[@]}"
+        elif command -v paru &>/dev/null; then
+            paru -S --needed --noconfirm "${aur_pkgs[@]}"
+        else
+            echo "  AUR packages needed: ${aur_pkgs[*]}"
+            echo "  Please install an AUR helper (yay or paru) or install them manually."
+            exit 1
+        fi
+    fi
+}
+
+install_packages_debian() {
+    sudo apt-get update -qq
+    sudo apt-get install -y "$@"
+}
+
 echo "[1/5] Checking dependencies..."
-MISSING=""
+MISSING_CMDS=""
+MISSING_PY_GI=0
 
 if ! command -v ddccontrol &>/dev/null; then
-    MISSING="$MISSING ddccontrol"
+    MISSING_CMDS="$MISSING_CMDS ddccontrol"
 fi
 
 if ! python3 -c "import gi; gi.require_version('Gtk', '3.0')" 2>/dev/null; then
-    MISSING="$MISSING python3-gi"
+    MISSING_PY_GI=1
 fi
 
-if [ -n "$MISSING" ]; then
-    echo "  Missing packages:$MISSING"
-    echo "  Installing..."
-    sudo apt-get update -qq
-    sudo apt-get install -y $MISSING gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1
+if [ -n "$MISSING_CMDS" ] || [ "$MISSING_PY_GI" -eq 1 ]; then
+    echo "  Missing dependencies detected. Installing..."
+    case "$DISTRO" in
+        arch)
+            PKGS=()
+            [[ "$MISSING_CMDS" == *ddccontrol* ]] && PKGS+=("ddccontrol")
+            [ "$MISSING_PY_GI" -eq 1 ] && PKGS+=("python-gobject" "gtk3" "libayatana-appindicator")
+            install_packages_arch "${PKGS[@]}"
+            ;;
+        debian)
+            PKGS=""
+            [[ "$MISSING_CMDS" == *ddccontrol* ]] && PKGS="$PKGS ddccontrol"
+            [ "$MISSING_PY_GI" -eq 1 ] && PKGS="$PKGS python3-gi gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1"
+            install_packages_debian $PKGS
+            ;;
+        *)
+            echo "  Unsupported distro. Please install manually:"
+            echo "    - ddccontrol"
+            echo "    - python3 GTK3 bindings (python-gobject / python3-gi)"
+            echo "    - libayatana-appindicator"
+            exit 1
+            ;;
+    esac
 else
     echo "  All dependencies satisfied."
+fi
+
+if ! command -v redshift &>/dev/null; then
+    echo "  Optional: 'redshift' not found (needed for color temperature presets)."
+    read -rp "  Install redshift? [y/N] " ans
+    if [[ "$ans" =~ ^[Yy]$ ]]; then
+        case "$DISTRO" in
+            arch)   install_packages_arch redshift ;;
+            debian) install_packages_debian redshift ;;
+            *)      echo "  Please install redshift manually." ;;
+        esac
+    fi
 fi
 
 echo "[2/5] Checking I2C permissions..."
