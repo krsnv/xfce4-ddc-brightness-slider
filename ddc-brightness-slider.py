@@ -10,8 +10,9 @@ Configuration:
   Edit the constants below or use command-line arguments.
 
 Requirements:
-  - ddccontrol (apt install ddccontrol)
-  - python3-gi (apt install python3-gi gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1)
+  - ddccontrol
+  - redshift
+  - python3-gi, gir1.2-gtk-3.0, gir1.2-ayatanaappindicator3-0.1
   - User must be in the 'i2c' group: sudo usermod -aG i2c $USER
 
 Author: Vladimir Krasnov
